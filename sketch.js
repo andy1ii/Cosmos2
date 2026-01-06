@@ -332,35 +332,34 @@ function handleFileUpload(file) {
       // 3. Update the source array
       imgs[targetIndex] = roundedImg;
 
-      // --- COMPLETE RE-SYNC OF ALL NODES ---
+      // --- FIX: FORCE UPDATE ALL NODES FOR ALL MODES ---
+      // This ensures that even if you are in Mode 1 or 2, 
+      // the shapes pick up the new image data immediately.
       
-      if (mode === 3 || mode === 4) {
-          // DEFINE BASE SIZE: Reset logic to avoid "shrinking" bug
-          let baseSize = (mode === 4) ? 280 : 400;
+      for (let i = 0; i < nodes.length; i++) {
+          let imgIndex = i % imgs.length;
+          let currentImg = imgs[imgIndex];
+          
+          // Re-bind the image. 
+          // This updates the reference so it stops showing the old placeholder.
+          nodes[i].img = currentImg;
+          
+          if (currentImg === roundedImg) {
+              nodes[i].targetScale = 0.1; // Pop animation
+          }
 
-          for (let i = 0; i < nodes.length; i++) {
-              let imgIndex = i % imgs.length;
-              let currentImg = imgs[imgIndex];
-              
-              nodes[i].img = currentImg;
-              
-              if (currentImg === roundedImg) {
-                  nodes[i].targetScale = 0.1; 
-              }
-
-              // --- FIX: Reset dimensions to Base Size BEFORE calculating ratio ---
+          // Recalculate Dimensions (Prevents distortion)
+          // Modes 1 & 2 handle this in Draw(), but we do it here for safety
+          // Modes 3 & 4 need this explicitly.
+          let ratio = currentImg.width / currentImg.height;
+          
+          if (mode === 3 || mode === 4) {
+              let baseSize = (mode === 4) ? 280 : 400;
               nodes[i].w = baseSize;
               nodes[i].h = baseSize;
-
-              let ratio = currentImg.width / currentImg.height;
-              if (ratio >= 1) { 
-                   nodes[i].h = nodes[i].w / ratio; 
-              } else { 
-                   nodes[i].w = nodes[i].h * ratio; 
-              }
+              if (ratio >= 1) { nodes[i].h = nodes[i].w / ratio; }
+              else { nodes[i].w = nodes[i].h * ratio; }
           }
-      } else {
-          // For Modes 1 & 2, logic handles itself in Draw
       }
 
       uploadCounter++;
@@ -483,7 +482,7 @@ function changeMode(newMode) {
   if (mode === 3) {
     camDist = 2000;
   } else if (mode === 4) {
-    // --- UPDATED: MOVED CLOSER (FROM 3500 TO 2500) ---
+    // Zoom out further for the chaos/expansion
     camDist = 1500;
   } else {
     camDist = 2000;
@@ -679,7 +678,7 @@ function drawFloatingGallery() {
   }
 }
 
-// --- UPDATED MODE 4: KINETIC VORTEX (LEGIBLE) ---
+// --- MODE 4: KINETIC VORTEX (LEGIBLE) ---
 function drawLogoMode() {
   let useScale = (isExporting || isVideoExport) ? exportRatio : 1;
   let finalDist = camDist * useScale; 
