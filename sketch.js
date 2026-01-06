@@ -2,7 +2,7 @@ let mode = 1;
 // 1 = Horizontal Globe Stack
 // 2 = Vertical Cylinder Stack
 // 3 = Floating Gallery (Free Flow)
-// 4 = Cosmos Logo Hexagon
+// 4 = Cosmos Logo Hexagon (KINETIC VORTEX)
 
 let imgs = [];
 let totalImages = 6; 
@@ -53,8 +53,15 @@ let isUIVisible = true;
 
 function setup() {
   createCanvas(windowWidth, windowHeight, WEBGL);
+  
+  // NOTE: We do NOT force pixelDensity(1) here. 
+  // We want the screen to look sharp (Retina).
+  
   noStroke();
   textureMode(NORMAL); 
+  
+  // --- PREVENT TEXTURE REPEATING ---
+  textureWrap(CLAMP);
   
   if (typeof CCapture === 'undefined') {
       loadScript("https://unpkg.com/ccapture.js@1.1.0/build/CCapture.all.min.js", () => {
@@ -72,7 +79,7 @@ function setup() {
   // --- Export dropdown ---
   exportSelect = createSelect();
   exportSelect.position(220, height - 40);
-  updateExportOptions();
+  updateExportOptions(); 
   styleUIElement(exportSelect);
   exportSelect.style('width', '140px');
   exportSelect.style('cursor', 'pointer');
@@ -136,14 +143,20 @@ function loadScript(url, callback){
 
 function generatePlaceholders() {
   for (let i = 0; i < totalImages; i++) {
-    let pg = createGraphics(400, 300);
+    // --- HIGH RESOLUTION PLACEHOLDERS (2K) ---
+    let pg = createGraphics(2048, 1536);
+    
+    // Maintain density 1 internally 
+    pg.pixelDensity(1);
+
     pg.background(220 + random(-20, 20)); 
     pg.fill(100);
     pg.textAlign(CENTER, CENTER);
-    pg.textSize(32);
-    pg.text("Upload", pg.width/2, pg.height/2 - 20);
-    pg.textSize(16);
-    pg.text("Image " + (i + 1), pg.width/2, pg.height/2 + 20);
+    
+    pg.textSize(150); 
+    pg.text("Upload", pg.width/2, pg.height/2 - 80);
+    pg.textSize(80);
+    pg.text("Image " + (i + 1), pg.width/2, pg.height/2 + 80);
     
     let img = pg.get();
     img.isPlaceholder = true; 
@@ -155,15 +168,11 @@ function generatePlaceholders() {
 
 function updateExportOptions() {
   exportSelect.html(''); 
-  if (mode === 3) {
-    exportSelect.option('Current View (Window)', 'window'); 
-  } else {
-    exportSelect.option('Current View (Window)', 'window');
-    exportSelect.option('Square (1080x1080)', 'square');
-    exportSelect.option('Portrait (1080x1920)', 'portrait');
-    exportSelect.option('Landscape (1920x1080)', 'landscape');
-    exportSelect.option('Print (2400x3000)', 'print');
-  }
+  exportSelect.option('Current View (Window)', 'window');
+  exportSelect.option('Square (1080x1080)', 'square');
+  exportSelect.option('Portrait (1080x1920)', 'portrait');
+  exportSelect.option('Landscape (1920x1080)', 'landscape');
+  exportSelect.option('Print (2400x3000)', 'print');
 }
 
 function styleUIElement(elt) {
@@ -263,30 +272,6 @@ function stopVideoExport() {
 function handleExport() {
   let choice = exportSelect.value();
 
-  if (mode === 3) {
-    isExporting = true; 
-    let targetW = width;
-    let targetH = height;
-    let c = document.querySelector('canvas');
-    let imgData = c.toDataURL("image/png");
-    let tempImg = new Image();
-    tempImg.src = imgData;
-    tempImg.onload = () => {
-      let hiddenCanvas = document.createElement('canvas');
-      hiddenCanvas.width = targetW;
-      hiddenCanvas.height = targetH;
-      let ctx = hiddenCanvas.getContext('2d');
-      ctx.drawImage(tempImg, 0, 0, targetW, targetH);
-      let link = document.createElement('a');
-      link.download = "cosmos_export_window.png";
-      link.href = hiddenCanvas.toDataURL();
-      link.click();
-      hiddenCanvas.remove();
-      isExporting = false; 
-    };
-    return; 
-  }
-
   let currentW = width;
   let currentH = height;
   let targetW = width;
@@ -309,8 +294,12 @@ function handleExport() {
 
   isExporting = true; 
   resizeCanvas(targetW, targetH);
+  
+  // Explicitly redraw with the new size
   draw(); 
+  
   save("cosmos_export_" + choice + ".png");
+  
   resizeCanvas(windowWidth, windowHeight);
   isExporting = false; 
   exportRatio = 1;
@@ -319,15 +308,16 @@ function handleExport() {
   positionUI();
 }
 
-// --- UPDATED FILE UPLOAD: REPLACE INSTEAD OF ADD ---
 function handleFileUpload(file) {
   if (file.type === 'image') {
     loadImage(file.data, (loadedImg) => {
+      // 1. Stop the shuffler immediately
       autoShuffle = false; 
+      
       let dynamicRadius = min(loadedImg.width, loadedImg.height) * 0.02;
       let roundedImg = makeRounded(loadedImg, dynamicRadius);
 
-      // 1. Try to find a placeholder first
+      // 2. Find target index
       let targetIndex = -1;
       for (let i = 0; i < imgs.length; i++) {
         if (imgs[i].isPlaceholder) {
@@ -335,40 +325,43 @@ function handleFileUpload(file) {
           break;
         }
       }
-
-      // 2. If no placeholders, replace existing images in a loop
-      // Use modulo operator to cycle 0, 1, 2, 3, 4, 5, 0, 1...
       if (targetIndex === -1) {
          targetIndex = uploadCounter % imgs.length;
       }
 
       // 3. Update the source array
-      let oldImgRef = imgs[targetIndex];
       imgs[targetIndex] = roundedImg;
 
-      // 4. Update the visual nodes immediately
-      let nodesUpdated = false;
-      for (let n of nodes) {
-        if (n.img === oldImgRef) {
-          n.img = roundedImg;
-          n.targetScale = 0.1; // Pop animation
-          
-          // Fix Aspect Ratio for static modes (Mode 3 & 4)
-          if (mode === 3 || mode === 4) {
-             let ratio = roundedImg.width / roundedImg.height;
-             if (ratio >= 1) { 
-                 n.h = n.w / ratio; 
-             } else { 
-                 n.h = n.w; 
-                 n.w = n.h * ratio; 
-             }
-          }
-          nodesUpdated = true;
-        }
-      }
+      // --- COMPLETE RE-SYNC OF ALL NODES ---
+      
+      if (mode === 3 || mode === 4) {
+          // DEFINE BASE SIZE: Reset logic to avoid "shrinking" bug
+          let baseSize = (mode === 4) ? 280 : 400;
 
-      // Fallback: If not found in active nodes (rare), just update the slot in background
-      // No need to rebuild via changeMode() because the node count didn't change.
+          for (let i = 0; i < nodes.length; i++) {
+              let imgIndex = i % imgs.length;
+              let currentImg = imgs[imgIndex];
+              
+              nodes[i].img = currentImg;
+              
+              if (currentImg === roundedImg) {
+                  nodes[i].targetScale = 0.1; 
+              }
+
+              // --- FIX: Reset dimensions to Base Size BEFORE calculating ratio ---
+              nodes[i].w = baseSize;
+              nodes[i].h = baseSize;
+
+              let ratio = currentImg.width / currentImg.height;
+              if (ratio >= 1) { 
+                   nodes[i].h = nodes[i].w / ratio; 
+              } else { 
+                   nodes[i].w = nodes[i].h * ratio; 
+              }
+          }
+      } else {
+          // For Modes 1 & 2, logic handles itself in Draw
+      }
 
       uploadCounter++;
     });
@@ -377,8 +370,12 @@ function handleFileUpload(file) {
 
 function makeRounded(img, radius) {
   let mask = createGraphics(img.width, img.height);
+  
+  // Maintain density 1 internally
+  mask.pixelDensity(1);
+
   mask.clear(); 
-  mask.fill(255);     
+  mask.fill(255);      
   mask.noStroke();
   mask.rect(0, 0, img.width, img.height, radius);
   let newImg = img.get();
@@ -486,7 +483,8 @@ function changeMode(newMode) {
   if (mode === 3) {
     camDist = 2000;
   } else if (mode === 4) {
-    camDist = ((height / 2.0) / tan(PI * 30.0 / 180.0)) * 2.5;
+    // --- UPDATED: MOVED CLOSER (FROM 3500 TO 2500) ---
+    camDist = 1500;
   } else {
     camDist = 2000;
   }
@@ -508,7 +506,6 @@ function changeMode(newMode) {
   
   if (mode === 1 || mode === 2) {
       let layers = 3;
-      // Fixed ring logic based on original design (8 per ring)
       let numPerLayer = 8;
       
       let poolIndex = 0;
@@ -518,7 +515,6 @@ function changeMode(newMode) {
           
           for (let i = 0; i < numPerLayer; i++) {
               let angle = (TWO_PI / numPerLayer) * i + angleOffset;
-              
               let img = pool[poolIndex % pool.length];
               poolIndex++;
               
@@ -531,9 +527,7 @@ function changeMode(newMode) {
       }
       
   } else if (mode === 3) { // Floating Gallery
-    // Limit floating gallery to 6 images
     let count = min(6, pool.length); 
-    
     for (let i = 0; i < count; i++) {
       let x = random(-800, 800); 
       let y = random(-700, 700); 
@@ -546,7 +540,8 @@ function changeMode(newMode) {
   } else if (mode === 4) { // Logo Hexagon
     let baseRadius = 420; 
     for (let i = 0; i < 6; i++) {
-      let angle = (TWO_PI / 6) * i - PI/6; 
+      // Create full hexagon logic again
+      let angle = (TWO_PI / 6) * i; 
       addNode(pool[i % pool.length], angle, baseRadius, 280, 0, 0, 0, 'flat', 0);
     }
   }
@@ -684,17 +679,22 @@ function drawFloatingGallery() {
   }
 }
 
+// --- UPDATED MODE 4: KINETIC VORTEX (LEGIBLE) ---
 function drawLogoMode() {
   let useScale = (isExporting || isVideoExport) ? exportRatio : 1;
   let finalDist = camDist * useScale; 
   camera(0, 0, finalDist, 0, 0, 0, 0, 1, 0);
   
-  rotateZ(frameCount * 0.01);
-  rotateX(sin(frameCount * 0.03) * 0.15); 
-  rotateY(cos(frameCount * 0.03) * 0.15);
+  // 1. Global Spin (The Vortex)
+  rotateZ(frameCount * 0.02); 
+  
+  // 2. Global Tilt (The Heaving)
+  rotateX(sin(frameCount * 0.01) * 0.5); 
+  rotateY(cos(frameCount * 0.015) * 0.3);
   
   if (isExporting || isVideoExport) scale(exportRatio);
 
+  // Auto shuffle logic
   if (!isExporting && !isRecording && autoShuffle && frameCount % 20 === 0) {
     let pickNode = floor(random(nodes.length));
     nodes[pickNode].img = random(imgs);
@@ -704,16 +704,32 @@ function drawLogoMode() {
   for (let i = 0; i < nodes.length; i++) {
     let n = nodes[i];
     push();
-    let x = n.radius * cos(n.angle);
-    let y = n.radius * sin(n.angle);
-    translate(x, y, 0);
-
-    n.targetScale = lerp(n.targetScale, 1, 0.2);
-    scale(n.targetScale);
     
-    let breath = sin(frameCount * 0.08 + i) * 15;
-    translate(0, 0, breath); 
+    // 3. Dynamic Radius (Expansion/Contraction)
+    let expansion = sin(frameCount * 0.04 + i) * 200; 
+    let currentRadius = n.radius + 300 + expansion;
 
+    // 4. Spiral Motion
+    let orbitalAngle = n.angle + (frameCount * 0.01); 
+    let x = currentRadius * cos(orbitalAngle);
+    let y = currentRadius * sin(orbitalAngle);
+    
+    // 5. Z-Axis Turbulence
+    let z = cos(frameCount * 0.05 + i * 2) * 150; 
+    
+    translate(x, y, z);
+
+    // --- Kinetic Size Variation (Wavy Effect) ---
+    // Scales the image size up and down in a wave pattern
+    let sizeWave = map(sin(frameCount * 0.05 + i * 0.5), -1, 1, 0.6, 1.4);
+    n.targetScale = lerp(n.targetScale, 1, 0.2);
+    scale(n.targetScale * sizeWave);
+
+    // --- Constrained "Wobble" for Legibility ---
+    rotateX(sin(frameCount * 0.02 + i) * 0.25); 
+    rotateY(cos(frameCount * 0.03 + i) * 0.25); 
+    rotateZ(sin(frameCount * 0.01 + i) * 0.1);  
+    
     texture(n.img);
     plane(n.w, n.h);
     pop();
