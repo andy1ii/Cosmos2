@@ -3,6 +3,7 @@ let mode = 1;
 // 2 = Vertical Cylinder Stack
 // 3 = Floating Gallery (Free Flow)
 // 4 = Cosmos Logo Hexagon (KINETIC VORTEX)
+// 5 = Fibonacci Sphere (Internal View)
 
 let imgs = [];
 let totalImages = 6; 
@@ -48,19 +49,17 @@ let recordBtn;
 let sizeSlider, radiusSlider, layerGapSlider;
 let sizeLabel, radiusLabel, gapLabel; 
 
+// --- MODE 4 & 5 SPECIFIC CONTROLS ---
+let numImagesSlider, numLabel;
+
 // UI Visibility Toggle
 let isUIVisible = true;
 
 function setup() {
   createCanvas(windowWidth, windowHeight, WEBGL);
   
-  // NOTE: We do NOT force pixelDensity(1) here. 
-  // We want the screen to look sharp (Retina).
-  
   noStroke();
   textureMode(NORMAL); 
-  
-  // --- PREVENT TEXTURE REPEATING ---
   textureWrap(CLAMP);
   
   if (typeof CCapture === 'undefined') {
@@ -102,13 +101,13 @@ function setup() {
   recordBtn.style('font-weight', 'bold');
   recordBtn.mousePressed(handleVideoToggle); 
 
-  // --- Sliders ---
-  sizeSlider = createSlider(100, 600, 250, 10); 
+  // --- Sliders (Shared) ---
+  sizeSlider = createSlider(50, 600, 150, 10); 
   sizeSlider.style('width', '80px');
   sizeLabel = createDiv("Size");
   styleLabel(sizeLabel);
 
-  radiusSlider = createSlider(300, 1500, 650, 10); 
+  radiusSlider = createSlider(100, 2000, 650, 10); 
   radiusSlider.style('width', '80px');
   radiusLabel = createDiv("Radius");
   styleLabel(radiusLabel);
@@ -117,6 +116,18 @@ function setup() {
   layerGapSlider.style('width', '80px');
   gapLabel = createDiv("Spacing");
   styleLabel(gapLabel);
+
+  // --- Count Slider (Mode 4 & 5) ---
+  // Min: 3, Max: 40, Start: 12
+  numImagesSlider = createSlider(3, 40, 12, 1); 
+  numImagesSlider.style('width', '80px');
+  
+  // OPTIMIZATION: Only rebuild on input for Count. 
+  // Size/Radius are handled live in the draw loop.
+  numImagesSlider.input(handleCountChange); 
+  
+  numLabel = createDiv("Count/Dens");
+  styleLabel(numLabel);
 
   positionUI();
   generatePlaceholders();
@@ -143,16 +154,11 @@ function loadScript(url, callback){
 
 function generatePlaceholders() {
   for (let i = 0; i < totalImages; i++) {
-    // --- HIGH RESOLUTION PLACEHOLDERS (2K) ---
     let pg = createGraphics(2048, 1536);
-    
-    // Maintain density 1 internally 
     pg.pixelDensity(1);
-
     pg.background(220 + random(-20, 20)); 
     pg.fill(100);
     pg.textAlign(CENTER, CENTER);
-    
     pg.textSize(150); 
     pg.text("Upload", pg.width/2, pg.height/2 - 80);
     pg.textSize(80);
@@ -197,19 +203,22 @@ function styleLabel(elt) {
 }
 
 function mouseWheel(event) {
-  if (mode === 3 || mode === 4) {
+  if (mode === 3 || mode === 4 || mode === 5) {
     camDist += event.delta;
-    camDist = constrain(camDist, 200, 10000);
+    
+    if (mode === 5) {
+        // Mode 5 constraint: keep near center (0.1) or allow zoom out
+        camDist = constrain(camDist, 0.1, 4000); 
+    } else {
+        camDist = constrain(camDist, 200, 10000);
+    }
     return false; 
   }
 }
 
 function handleVideoToggle() {
-    if (isRecording) {
-        stopVideoExport(); 
-    } else {
-        startVideoExport(); 
-    }
+    if (isRecording) stopVideoExport(); 
+    else startVideoExport(); 
 }
 
 function startVideoExport() {
@@ -217,30 +226,23 @@ function startVideoExport() {
         alert("Video library loading... please wait 2 seconds and try again.");
         return;
     }
-
     let choice = exportSelect.value();
-    let targetW = width;
-    let targetH = height;
-
+    let targetW = width, targetH = height;
     if (choice === 'square') { targetW = 1080; targetH = 1080; }
     else if (choice === 'portrait') { targetW = 1080; targetH = 1920; }
     else if (choice === 'landscape') { targetW = 1920; targetH = 1080; }
     else if (choice === 'print') { targetW = 2400; targetH = 3000; }
 
     resizeCanvas(targetW, targetH);
-    
     exportRatio = targetH / windowHeight; 
     aspectMultiplier = 1;
-    if (choice !== 'window' && (mode === 1 || mode === 2 || mode === 4)) {
+    if (choice !== 'window' && (mode !== 3)) {
         let currentAspect = windowWidth / windowHeight;
         let targetAspect = targetW / targetH;
-        if (targetAspect < currentAspect) {
-            aspectMultiplier = currentAspect / targetAspect;
-        }
+        if (targetAspect < currentAspect) aspectMultiplier = currentAspect / targetAspect;
     }
     
     isVideoExport = true; 
-
     recorder = new CCapture({ format: 'webm', framerate: 30 });
     recorder.start();
     isRecording = true;
@@ -257,11 +259,9 @@ function stopVideoExport() {
         recorder.save();
         isRecording = false;
         isVideoExport = false;
-        
         recordBtn.html("Save Video");
         recordBtn.style('background', 'transparent');
         recordBtn.style('color', '#555');
-        
         resizeCanvas(windowWidth, windowHeight);
         exportRatio = 1;
         aspectMultiplier = 1;
@@ -271,97 +271,71 @@ function stopVideoExport() {
 
 function handleExport() {
   let choice = exportSelect.value();
-
-  let currentW = width;
-  let currentH = height;
-  let targetW = width;
-  let targetH = height;
+  let targetW = width, targetH = height;
 
   if (choice === 'square') { targetW = 1080; targetH = 1080; }
   else if (choice === 'portrait') { targetW = 1080; targetH = 1920; }
   else if (choice === 'landscape') { targetW = 1920; targetH = 1080; }
   else if (choice === 'print') { targetW = 2400; targetH = 3000; }
 
-  exportRatio = targetH / currentH; 
+  exportRatio = targetH / height; 
   aspectMultiplier = 1;
-  if (choice !== 'window' && (mode === 1 || mode === 2 || mode === 4)) {
-      let currentAspect = currentW / currentH;
+  if (choice !== 'window' && (mode !== 3)) {
+      let currentAspect = width / height;
       let targetAspect = targetW / targetH;
-      if (targetAspect < currentAspect) {
-          aspectMultiplier = currentAspect / targetAspect;
-      }
+      if (targetAspect < currentAspect) aspectMultiplier = currentAspect / targetAspect;
   }
 
   isExporting = true; 
   resizeCanvas(targetW, targetH);
-  
-  // Explicitly redraw with the new size
   draw(); 
-  
   save("cosmos_export_" + choice + ".png");
-  
   resizeCanvas(windowWidth, windowHeight);
   isExporting = false; 
   exportRatio = 1;
   aspectMultiplier = 1;
-  
   positionUI();
 }
 
 function handleFileUpload(file) {
   if (file.type === 'image') {
     loadImage(file.data, (loadedImg) => {
-      // 1. Stop the shuffler immediately
       autoShuffle = false; 
-      
       let dynamicRadius = min(loadedImg.width, loadedImg.height) * 0.02;
       let roundedImg = makeRounded(loadedImg, dynamicRadius);
 
-      // 2. Find target index
+      // --- LOGIC FIX: GROW ARRAY IF NO PLACEHOLDERS ---
       let targetIndex = -1;
       for (let i = 0; i < imgs.length; i++) {
-        if (imgs[i].isPlaceholder) {
-          targetIndex = i;
-          break;
-        }
-      }
-      if (targetIndex === -1) {
-         targetIndex = uploadCounter % imgs.length;
+        if (imgs[i].isPlaceholder) { targetIndex = i; break; }
       }
 
-      // 3. Update the source array
-      imgs[targetIndex] = roundedImg;
+      if (targetIndex !== -1) {
+        imgs[targetIndex] = roundedImg;
+      } else {
+        imgs.push(roundedImg); // Add new image to the end
+      }
 
-      // --- FIX: FORCE UPDATE ALL NODES FOR ALL MODES ---
-      // This ensures that even if you are in Mode 1 or 2, 
-      // the shapes pick up the new image data immediately.
-      
+      // Re-assign images to nodes
       for (let i = 0; i < nodes.length; i++) {
           let imgIndex = i % imgs.length;
           let currentImg = imgs[imgIndex];
-          
-          // Re-bind the image. 
-          // This updates the reference so it stops showing the old placeholder.
           nodes[i].img = currentImg;
           
-          if (currentImg === roundedImg) {
-              nodes[i].targetScale = 0.1; // Pop animation
-          }
+          if (currentImg === roundedImg) nodes[i].targetScale = 0.1; 
 
-          // Recalculate Dimensions (Prevents distortion)
-          // Modes 1 & 2 handle this in Draw(), but we do it here for safety
-          // Modes 3 & 4 need this explicitly.
           let ratio = currentImg.width / currentImg.height;
           
-          if (mode === 3 || mode === 4) {
-              let baseSize = (mode === 4) ? 280 : 400;
-              nodes[i].w = baseSize;
-              nodes[i].h = baseSize;
-              if (ratio >= 1) { nodes[i].h = nodes[i].w / ratio; }
-              else { nodes[i].w = nodes[i].h * ratio; }
+          if (mode === 5) {
+             nodes[i].aspect = ratio;
+          } else if (mode === 3 || mode === 4) {
+             let baseSize = (mode === 4) ? 280 : 400;
+             nodes[i].w = baseSize;
+             nodes[i].h = baseSize;
+             if (ratio >= 1) { nodes[i].h = nodes[i].w / ratio; }
+             else { nodes[i].w = nodes[i].h * ratio; }
           }
       }
-
       uploadCounter++;
     });
   }
@@ -369,12 +343,9 @@ function handleFileUpload(file) {
 
 function makeRounded(img, radius) {
   let mask = createGraphics(img.width, img.height);
-  
-  // Maintain density 1 internally
   mask.pixelDensity(1);
-
   mask.clear(); 
-  mask.fill(255);      
+  mask.fill(255);        
   mask.noStroke();
   mask.rect(0, 0, img.width, img.height, radius);
   let newImg = img.get();
@@ -382,26 +353,6 @@ function makeRounded(img, radius) {
   mask.remove();
   if(img.isPlaceholder) newImg.isPlaceholder = true;
   return newImg;
-}
-
-function getSortedNodeIndices() {
-  let candidates = nodes.map((n, index) => {
-    let score = 0; 
-    if (mode === 3 || mode === 4) {
-      if (mode === 3) score = -abs(n.zOff); 
-      else score = random(100); 
-    } else if (mode === 1) {
-      let effectiveAngle = n.angle + globeRotation;
-      let viewAngle = -camRotY; 
-      score = sin(effectiveAngle - viewAngle + HALF_PI);
-    } else if (mode === 2) {
-      let effectiveAngle = n.angle; 
-      score = cos(effectiveAngle - globeRotation); 
-    }
-    return { index, score };
-  });
-  candidates.sort((a, b) => b.score - a.score);
-  return candidates.map(c => c.index);
 }
 
 function mousePressed() {
@@ -433,12 +384,11 @@ function draw() {
   else if (mode === 2) drawVerticalStack();
   else if (mode === 3) drawFloatingGallery(); 
   else if (mode === 4) drawLogoMode(); 
+  else if (mode === 5) drawFibonacciSphere(); 
   
   if (isRecording) {
       recorder.capture(document.querySelector('canvas'));
-      if (frameCount - recordingStartFrame > recordingDuration) {
-          stopVideoExport();
-      }
+      if (frameCount - recordingStartFrame > recordingDuration) stopVideoExport();
   }
 }
 
@@ -447,6 +397,7 @@ function keyPressed() {
   if (key === '2') changeMode(2);
   if (key === '3') changeMode(3);
   if (key === '4') changeMode(4);
+  if (key === '5') changeMode(5);
   
   if (key === 'h' || key === 'H') {
       isUIVisible = !isUIVisible;
@@ -461,71 +412,111 @@ function toggleUI(visible) {
     exportBtn.style('display', displayVal);
     recordBtn.style('display', displayVal);
     
-    if (mode === 1 || mode === 2) {
-        sizeSlider.style('display', displayVal);
-        radiusSlider.style('display', displayVal);
-        layerGapSlider.style('display', displayVal);
-        sizeLabel.style('display', displayVal);
-        radiusLabel.style('display', displayVal);
-        gapLabel.style('display', displayVal);
+    if (visible) {
+        // Shared visibility logic
+        let showSize = (mode === 1 || mode === 2 || mode === 5);
+        let showRad = (mode === 1 || mode === 2 || mode === 5);
+        let showGap = (mode === 1 || mode === 2);
+        let showCount = (mode === 4 || mode === 5);
+
+        if(showSize) { sizeSlider.show(); sizeLabel.show(); } else { sizeSlider.hide(); sizeLabel.hide(); }
+        if(showRad) { radiusSlider.show(); radiusLabel.show(); } else { radiusSlider.hide(); radiusLabel.hide(); }
+        if(showGap) { layerGapSlider.show(); gapLabel.show(); } else { layerGapSlider.hide(); gapLabel.hide(); }
+        if(showCount) { numImagesSlider.show(); numLabel.show(); } else { numImagesSlider.hide(); numLabel.hide(); }
+        
+    } else {
+        sizeSlider.hide(); radiusSlider.hide(); layerGapSlider.hide();
+        sizeLabel.hide(); radiusLabel.hide(); gapLabel.hide();
+        numImagesSlider.hide(); numLabel.hide();
     }
 }
 
-// --- MODE MANAGER ---
+function handleCountChange() {
+    // Only rebuilds structure when COUNT changes
+    if (mode === 4) rebuildMode4();
+    if (mode === 5) rebuildMode5();
+}
+
+function rebuildMode4() {
+  let targetCount = numImagesSlider.value();
+  nodes = [];
+  if (imgs.length === 0) return;
+  let pool = [...imgs];
+  let baseRadius = 420;
+  
+  for (let i = 0; i < targetCount; i++) {
+     let angle = (TWO_PI / targetCount) * i; 
+     addNode(pool[i % pool.length], angle, baseRadius, 280, 0, 0, 0, 'flat', 0);
+  }
+}
+
+function rebuildMode5() {
+  // We only set up the NODES here.
+  // Coordinates are calculated live in Draw based on Radius Slider.
+  
+  let numNodes = numImagesSlider.value() * 5; 
+  
+  nodes = [];
+  if (imgs.length === 0) return;
+  let pool = [...imgs];
+
+  for (let i = 0; i < numNodes; i++) {
+    // We store PHI and THETA, not X/Y/Z
+    // This allows us to expand/contract the sphere instantly in the draw loop
+    let phi = Math.acos(1 - 2 * (i + 0.5) / numNodes);
+    let theta = Math.PI * (1 + Math.sqrt(5)) * i;
+
+    // Add node with special props for Mode 5
+    let img = pool[i % pool.length];
+    
+    // We don't set W/H here, we do it in draw loop based on slider
+    nodes.push({
+        img: img,
+        phi: phi,
+        theta: theta,
+        aspect: img.width / img.height,
+        targetScale: 1,
+        mode5: true // marker
+    });
+  }
+}
+
 function changeMode(newMode) {
   mode = newMode;
   nodes = []; 
   frameCount = 0; 
   camRotX = 0;
   camRotY = 0;
-  
-  if (mode === 3) {
-    camDist = 2000;
-  } else if (mode === 4) {
-    // Zoom out further for the chaos/expansion
-    camDist = 1500;
+
+  // --- CAMERA DISTANCE LOGIC ---
+  if(mode === 4) {
+      camDist = 1500;
+  } else if (mode === 5) {
+      camDist = 0.1; // Place camera INSIDE the sphere
   } else {
-    camDist = 2000;
+      camDist = 2000;
   }
 
   updateExportOptions(); 
-  
-  let showSliders = (mode === 1 || mode === 2);
-  if (showSliders) {
-      sizeSlider.show(); radiusSlider.show(); layerGapSlider.show();
-      sizeLabel.show(); radiusLabel.show(); gapLabel.show();
-  } else {
-      sizeSlider.hide(); radiusSlider.hide(); layerGapSlider.hide();
-      sizeLabel.hide(); radiusLabel.hide(); gapLabel.hide();
-  }
+  toggleUI(isUIVisible);
 
   if (imgs.length === 0) return;
-  
   let pool = [...imgs]; 
   
   if (mode === 1 || mode === 2) {
       let layers = 3;
       let numPerLayer = 8;
-      
       let poolIndex = 0;
-      
       for (let l = 0; l < layers; l++) {
           let angleOffset = (l === 1) ? (TWO_PI / numPerLayer) / 2 : 0;
-          
           for (let i = 0; i < numPerLayer; i++) {
               let angle = (TWO_PI / numPerLayer) * i + angleOffset;
               let img = pool[poolIndex % pool.length];
               poolIndex++;
-              
-              if (mode === 1) {
-                 addNode(img, angle, 0, 250, 0, 0, 0, 'horizontal', l - 1); 
-              } else {
-                 addNode(img, angle, 0, 250, 0, 0, 0, 'vertical', l - 1);
-              }
+              addNode(img, angle, 0, 250, 0, 0, 0, (mode===1?'horizontal':'vertical'), l - 1);
           }
       }
-      
-  } else if (mode === 3) { // Floating Gallery
+  } else if (mode === 3) {
     let count = min(6, pool.length); 
     for (let i = 0; i < count; i++) {
       let x = random(-800, 800); 
@@ -536,45 +527,45 @@ function changeMode(newMode) {
       let n = nodes[nodes.length-1];
       n.driftVel = createVector(random(-0.2,0.2), random(-0.2,0.2), random(-0.2,0.2));
     }
-  } else if (mode === 4) { // Logo Hexagon
-    let baseRadius = 420; 
-    for (let i = 0; i < 6; i++) {
-      // Create full hexagon logic again
-      let angle = (TWO_PI / 6) * i; 
-      addNode(pool[i % pool.length], angle, baseRadius, 280, 0, 0, 0, 'flat', 0);
-    }
+  } else if (mode === 4) {
+    rebuildMode4();
+  } else if (mode === 5) {
+    rebuildMode5();
   }
 }
 
 function addNode(img, angle, radius, maxSize, xOff, yOff, zOff, curveType, layerIndex) {
   if (!img) return;
+  let ratio = img.width / img.height;
+  let w = maxSize; 
+  let h = maxSize;
+  if (ratio >= 1) h = w / ratio;
+  else w = h * ratio;
+
   nodes.push({ 
-      img, angle, radius, w: maxSize, h: maxSize, 
+      img, angle, radius, w, h, 
       targetScale: 1, xOff, yOff, zOff, 
-      curveType, layerIndex 
+      curveType, layerIndex, aspect: ratio
   });
 }
 
 // --- DRAW FUNCTIONS ---
+
 function drawHorizontalStack() {
   let userSize = sizeSlider.value();
   let userRadius = radiusSlider.value(); 
   let userLayerGap = layerGapSlider.value();
-
   let centerY = 0; 
   camera(0, centerY, 0, 0, centerY, -500, 0, 1, 0);
 
   if (!isExporting && !isRecording) handleCameraDrag();
   rotateX(camRotX);
   rotateY(camRotY);
-  
   if (isExporting || isVideoExport) scale(exportRatio);
-
   if (!isExporting && !isRecording && autoShuffle && frameCount - lastSwitchFrame >= switchInterval) {
     refreshImagesRandomly();
     lastSwitchFrame = frameCount;
   }
-
   globeRotation += 0.01;
 
   for (let n of nodes) {
@@ -601,16 +592,13 @@ function drawVerticalStack() {
   let userSize = sizeSlider.value();
   let userRadius = radiusSlider.value(); 
   let userLayerGap = layerGapSlider.value();
-
   let centerX = 0; 
   camera(centerX, 0, 0, centerX, 0, -600, 0, 1, 0);
 
   if (!isExporting && !isRecording) handleCameraDrag();
   rotateX(camRotX);
   rotateY(camRotY);
-  
   if (isExporting || isVideoExport) scale(exportRatio);
-
   globeRotation += 0.01;
   rotateX(globeRotation);
 
@@ -641,11 +629,9 @@ function drawFloatingGallery() {
   let finalDist = camDist * useScale * useAspect;
   
   camera(0, 0, finalDist, 0, 0, 0, 0, 1, 0);
-  
   if (!isExporting && !isRecording) handleCameraDrag();
   rotateX(camRotX);
   rotateY(camRotY);
-  
   if (isExporting || isVideoExport) scale(exportRatio);
 
   if (!isExporting && !isRecording && autoShuffle && frameCount - lastSwitchFrame >= switchInterval) {
@@ -669,7 +655,6 @@ function drawFloatingGallery() {
     translate(n.xOff, n.yOff, n.zOff);
     rotateY(-camRotY);
     rotateX(-camRotX);
-
     n.targetScale = lerp(n.targetScale, 1, 0.1);
     scale(n.targetScale);
     texture(n.img);
@@ -678,22 +663,15 @@ function drawFloatingGallery() {
   }
 }
 
-// --- MODE 4: KINETIC VORTEX (FERRIS WHEEL STYLE) ---
 function drawLogoMode() {
   let useScale = (isExporting || isVideoExport) ? exportRatio : 1;
   let finalDist = camDist * useScale; 
   camera(0, 0, finalDist, 0, 0, 0, 0, 1, 0);
   
-  // 1. Global Spin REMOVED so images stay upright
-  // rotateZ(frameCount * 0.02); 
-  
-  // 2. Global Tilt (The Heaving)
-  rotateX(sin(frameCount * 0.01) * 0.5); 
-  rotateY(cos(frameCount * 0.015) * 0.3);
-  
+  rotateX(sin(frameCount * 0.01) * 0.05); 
+  rotateY(cos(frameCount * 0.015) * 0.05); 
   if (isExporting || isVideoExport) scale(exportRatio);
 
-  // Auto shuffle logic
   if (!isExporting && !isRecording && autoShuffle && frameCount % 20 === 0) {
     let pickNode = floor(random(nodes.length));
     nodes[pickNode].img = random(imgs);
@@ -703,34 +681,85 @@ function drawLogoMode() {
   for (let i = 0; i < nodes.length; i++) {
     let n = nodes[i];
     push();
-    
-    // 3. Dynamic Radius (Expansion/Contraction)
     let expansion = sin(frameCount * 0.04 + i) * 200; 
     let currentRadius = n.radius + 300 + expansion;
-
-    // 4. Spiral Motion (Increased speed to compensate for lack of global spin)
     let orbitalAngle = n.angle + (frameCount * 0.03); 
     let x = currentRadius * cos(orbitalAngle);
     let y = currentRadius * sin(orbitalAngle);
-    
-    // 5. Z-Axis Turbulence
     let z = cos(frameCount * 0.05 + i * 2) * 150; 
     
     translate(x, y, z);
-
-    // --- Kinetic Size Variation (Wavy Effect) ---
-    // Scales the image size up and down in a wave pattern
     let sizeWave = map(sin(frameCount * 0.05 + i * 0.5), -1, 1, 0.6, 1.4);
     n.targetScale = lerp(n.targetScale, 1, 0.2);
     scale(n.targetScale * sizeWave);
-
-    // --- Constrained "Wobble" for Legibility ---
-    rotateX(sin(frameCount * 0.02 + i) * 0.25); 
-    rotateY(cos(frameCount * 0.03 + i) * 0.25); 
+    rotateX(sin(frameCount * 0.02 + i) * 0.15); 
+    rotateY(cos(frameCount * 0.03 + i) * 0.15); 
     rotateZ(sin(frameCount * 0.01 + i) * 0.1);  
     
     texture(n.img);
     plane(n.w, n.h);
+    pop();
+  }
+}
+
+function drawFibonacciSphere() {
+  let useScale = (isExporting || isVideoExport) ? exportRatio : 1;
+  let finalDist = camDist * useScale;
+  
+  // LIVE UPDATE from sliders to prevent crash/lag
+  let currentRadius = radiusSlider.value();
+  let currentSize = sizeSlider.value();
+  
+  // Camera placement: Inside center
+  camera(0, 0, finalDist, 0, 0, 0, 0, 1, 0);
+
+  // Allow mouse looking
+  if (!isExporting && !isRecording) handleCameraDrag();
+  rotateX(camRotX);
+  rotateY(camRotY);
+
+  // Global Sphere Rotation
+  rotateY(frameCount * 0.002);
+
+  if (isExporting || isVideoExport) scale(exportRatio);
+  
+  if (!isExporting && !isRecording && autoShuffle && frameCount - lastSwitchFrame >= switchInterval) {
+    refreshImagesRandomly();
+    lastSwitchFrame = frameCount;
+  }
+
+  for (let n of nodes) {
+    if(!n.mode5) continue; // safety check
+
+    push();
+    
+    // --- DYNAMIC POSITIONING ---
+    // Recalculate position every frame based on Slider Radius
+    let x = currentRadius * Math.sin(n.phi) * Math.cos(n.theta);
+    let y = currentRadius * Math.sin(n.phi) * Math.sin(n.theta);
+    let z = currentRadius * Math.cos(n.phi);
+
+    translate(x, y, z);
+    
+    // --- FACE CENTER LOGIC ---
+    let angleY = atan2(x, z);
+    let distXZ = sqrt(x * x + z * z);
+    let angleX = -atan2(y, distXZ);
+
+    rotateY(angleY);
+    rotateX(angleX);
+
+    n.targetScale = lerp(n.targetScale, 1, 0.1);
+    scale(n.targetScale);
+    
+    // Calculate Size based on slider and stored aspect ratio
+    let w = currentSize;
+    let h = currentSize;
+    if (n.aspect >= 1) h = w / n.aspect;
+    else w = h * n.aspect;
+    
+    texture(n.img);
+    plane(w, h);
     pop();
   }
 }
@@ -765,11 +794,18 @@ function refreshImagesRandomly() {
   let pickImg = random(imgs);
   nodes[pickNode].img = pickImg;
   
+  // Update aspect ratio store for Mode 5
+  if (mode === 5) {
+      nodes[pickNode].aspect = pickImg.width / pickImg.height;
+      nodes[pickNode].targetScale = 0.1; // Pop effect
+      return; 
+  }
+  
   if (mode === 4) { nodes[pickNode].w = 280; }
   else if (mode === 3) { nodes[pickNode].w = 400; }
   
   let ratio = pickImg.width / pickImg.height;
-  if (mode === 4 || mode === 3) {
+  if (mode === 3 || mode === 4) {
       if (ratio >= 1) nodes[pickNode].h = nodes[pickNode].w / ratio;
       else {
           nodes[pickNode].h = nodes[pickNode].w; 
@@ -784,6 +820,7 @@ function positionUI() {
   exportBtn.position(370, height - 40);
   recordBtn.position(460, height - 40);
   
+  // Shared Slider Positions
   sizeSlider.position(550, height - 40);
   radiusSlider.position(670, height - 40);
   layerGapSlider.position(790, height - 40);
@@ -791,6 +828,22 @@ function positionUI() {
   sizeLabel.position(550, height - 55);
   radiusLabel.position(670, height - 55);
   gapLabel.position(790, height - 55);
+
+  // Count Slider Position
+  numImagesSlider.position(790, height - 40); // Overlaps gap slider usually, but toggle handles vis
+  numLabel.position(790, height - 55);
+  
+  // Custom tweaks for overlap based on mode
+  if (mode === 5) {
+      // Mode 5 uses Size (550), Radius (670), and Count. 
+      // We move Count to the third slot (790) replacing Gap.
+      numImagesSlider.position(790, height - 40);
+      numLabel.position(790, height - 55);
+  } else if (mode === 4) {
+       // Mode 4 uses ONLY count. Move it to the first slot.
+       numImagesSlider.position(550, height - 40);
+       numLabel.position(550, height - 55);
+  }
 }
 
 function windowResized() {
