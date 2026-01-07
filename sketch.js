@@ -118,8 +118,8 @@ function setup() {
   styleLabel(gapLabel);
 
   // --- Count Slider (Mode 4 & 5) ---
-  // Min: 3, Max: 40, Start: 12
-  numImagesSlider = createSlider(3, 40, 12, 1); 
+  // UPDATED: Min 6, Max 20, Start 6
+  numImagesSlider = createSlider(6, 13, 6, 1); 
   numImagesSlider.style('width', '80px');
   
   // OPTIMIZATION: Only rebuild on input for Count. 
