@@ -678,14 +678,14 @@ function drawFloatingGallery() {
   }
 }
 
-// --- MODE 4: KINETIC VORTEX (LEGIBLE) ---
+// --- MODE 4: KINETIC VORTEX (FERRIS WHEEL STYLE) ---
 function drawLogoMode() {
   let useScale = (isExporting || isVideoExport) ? exportRatio : 1;
   let finalDist = camDist * useScale; 
   camera(0, 0, finalDist, 0, 0, 0, 0, 1, 0);
   
-  // 1. Global Spin (The Vortex)
-  rotateZ(frameCount * 0.02); 
+  // 1. Global Spin REMOVED so images stay upright
+  // rotateZ(frameCount * 0.02); 
   
   // 2. Global Tilt (The Heaving)
   rotateX(sin(frameCount * 0.01) * 0.5); 
@@ -708,8 +708,8 @@ function drawLogoMode() {
     let expansion = sin(frameCount * 0.04 + i) * 200; 
     let currentRadius = n.radius + 300 + expansion;
 
-    // 4. Spiral Motion
-    let orbitalAngle = n.angle + (frameCount * 0.01); 
+    // 4. Spiral Motion (Increased speed to compensate for lack of global spin)
+    let orbitalAngle = n.angle + (frameCount * 0.03); 
     let x = currentRadius * cos(orbitalAngle);
     let y = currentRadius * sin(orbitalAngle);
     
