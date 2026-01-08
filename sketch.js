@@ -58,6 +58,9 @@ let perspectiveSlider, perspLabel; // Mode 4
 let isTicking = false; 
 let tickBtn;
 
+// --- TOP NAV VARS ---
+let modeButtons = [];
+
 // UI Visibility Toggle
 let isUIVisible = true;
 
@@ -130,10 +133,12 @@ function setup() {
   // --- Ticking Button ---
   tickBtn = createButton('Motion: Smooth');
   styleUIElement(tickBtn);
-  // *** FIXED WIDTH FOR CONSISTENCY ***
   tickBtn.style('width', '110px'); 
   tickBtn.style('text-align', 'center');
   tickBtn.mousePressed(toggleTickMode);
+  
+  // *** Setup Numbered Box Buttons ***
+  setupModeButtons();
 
   // 1. Generate placeholders
   generatePlaceholders();
@@ -143,6 +148,33 @@ function setup() {
   
   // 3. Start in Mode 1
   changeMode(1); 
+}
+
+function setupModeButtons() {
+    for (let i = 0; i < 5; i++) {
+        // Create button with number (1-5)
+        let btn = createButton(String(i + 1));
+        
+        // Square Box Styling
+        btn.style('font-family', 'Helvetica, sans-serif');
+        btn.style('font-size', '14px');
+        btn.style('font-weight', 'bold');
+        btn.style('text-align', 'center');
+        btn.style('border', '1px solid #ccc');
+        btn.style('border-radius', '4px'); // Slight rounded corner
+        btn.style('cursor', 'pointer');
+        
+        // Force Square Dimensions
+        btn.style('width', '30px');
+        btn.style('height', '30px');
+        btn.style('padding', '0'); // Remove padding to center text
+        btn.style('line-height', '28px'); // Vertically center text
+        
+        // Click Handler
+        btn.mousePressed(() => changeMode(i + 1));
+        
+        modeButtons.push(btn);
+    }
 }
 
 // Helper to inject script
@@ -230,7 +262,7 @@ function toggleTickMode() {
     isTicking = !isTicking;
     // We only change colors/text, NOT width/padding
     if(isTicking) {
-        tickBtn.html("Motion: Snap");
+        tickBtn.html("Motion: Clock");
         tickBtn.style('background', '#eee');
     } else {
         tickBtn.html("Motion: Smooth");
@@ -459,7 +491,7 @@ function toggleUI(visible) {
     exportBtn.style('display', displayVal);
     recordBtn.style('display', displayVal);
     
-    // 1. Hide ALL dynamic sliders/buttons first
+    // Hide all Mode Specific
     sizeSlider.hide(); sizeLabel.hide();
     radiusSlider.hide(); radiusLabel.hide();
     layerGapSlider.hide(); gapLabel.hide();
@@ -467,6 +499,11 @@ function toggleUI(visible) {
     perspectiveSlider.hide(); perspLabel.hide();
     tickBtn.hide(); 
     
+    // Toggle Top Nav Buttons
+    for(let btn of modeButtons) {
+        btn.style('display', displayVal);
+    }
+
     if (!visible) return;
 
     // 2. Selectively Show based on Mode
@@ -533,6 +570,22 @@ function rebuildMode5() {
   }
 }
 
+function updateModeButtonStyle() {
+    for (let i = 0; i < modeButtons.length; i++) {
+        if (i + 1 === mode) {
+            // ACTIVE STYLE
+            modeButtons[i].style('background-color', '#333');
+            modeButtons[i].style('color', '#fff');
+            modeButtons[i].style('border', '1px solid #333');
+        } else {
+            // INACTIVE STYLE
+            modeButtons[i].style('background-color', 'rgba(255,255,255,0.8)');
+            modeButtons[i].style('color', '#555');
+            modeButtons[i].style('border', '1px solid #ccc');
+        }
+    }
+}
+
 function changeMode(newMode) {
   mode = newMode;
   nodes = []; 
@@ -547,6 +600,9 @@ function changeMode(newMode) {
   } else {
       camDist = 2000;
   }
+  
+  // *** Update Nav Button Visuals ***
+  updateModeButtonStyle();
 
   updateExportOptions(); 
   positionUI(); // Recalculate positions
@@ -894,7 +950,20 @@ function positionUI() {
   
   // *** FIXED ALIGNMENT ***
   // Slider width is ~80px. We place button next to it.
-  tickBtn.position(slot3X + 90, height - 40); 
+  tickBtn.position(slot3X + 90, height - 40);
+  
+  // *** TOP NAV POSITIONING ***
+  // Right aligned with a bit of padding
+  let startX = width - 40; 
+  let btnSize = 30; // 30px square
+  let gap = 10;
+  
+  // Loop backwards to place from right to left
+  for (let i = modeButtons.length - 1; i >= 0; i--) {
+      // Calculate position from the right
+      let pos = startX - ((modeButtons.length - 1 - i) * (btnSize + gap)) - btnSize;
+      modeButtons[i].position(pos, 20);
+  }
 }
 
 function windowResized() {
